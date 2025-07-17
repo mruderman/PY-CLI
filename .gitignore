@@ -1,3 +1,7 @@
+# Sensitive
+.env
+.db
+
 # Python
 __pycache__/
 *.py[cod]
@@ -40,4 +44,7 @@ htmlcov/
 
 # Distribution
 dist/
-build/ 
+build/
+
+# Promptyoself Database
+sanctum-letta-mcp/promptyoself.db
