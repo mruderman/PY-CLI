@@ -30,21 +30,17 @@ A powerful, plugin-based Model Context Protocol (MCP) server for the Sanctum Let
    git clone https://github.com/markrizzn/sanctum-letta-mcp.git
    cd sanctum-letta-mcp
    ```
+   **Note:** Ensure you are cloning into a new, empty directory to avoid pathing conflicts.
 
-2. **Create virtual environment**
+2. **Create virtual environment and install dependencies**
    ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   python3 -m venv venv
+   ./venv/bin/pip install -r requirements.txt
    ```
 
-3. **Install dependencies**
+3. **Run the server**
    ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Run the server**
-   ```bash
-   python smcp/mcp_server.py
+   ./venv/bin/python smcp/mcp_server.py
    ```
 
 The server will start on `http://localhost:8000` by default with **localhost + Docker container access** for development environments.
@@ -357,10 +353,18 @@ mypy smcp/
 # Run tests with coverage
 python -m pytest tests/ --cov=smcp --cov-report=html
 ```
-
-## 📄 License
-
-This project is licensed under the Creative Commons Attribution-ShareAlike 4.0 International License - see the [LICENSE](LICENSE) file for details.
+## 🩺 Troubleshooting
+ 
+ ### File Corruption
+ 
+ In some rare cases, source files may become empty or corrupted. If you encounter unexpected `ImportError`s or other file-related issues, use `git status` to check for changes. You can restore a corrupted file with:
+ ```bash
+ git restore <path/to/file>
+ ```
+ 
+ ## 📄 License
+ 
+ This project is licensed under the Creative Commons Attribution-ShareAlike 4.0 International License - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
