@@ -8,7 +8,7 @@
 
 | Capability                      | Description                                                                                                                                                                       |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **CLI‑first design**            | `promptyoself` ships as an [argparse](https://docs.python.org/3/library/argparse.html)‑based CLI. Sanctum MCP auto‑discovers it and exposes each sub‑command as a tool to agents. |
+| **CLI‑first design**            | `promptyoself` ships as an [argparse](https://docs.python.org/3/library/argparse.html)‑based CLI. Sanctum MCP auto‑discovers it and exposes each sub‑command as a MCP **tool**. Letta agents invoke these tools via **pure JSON-RPC 2.0**, with the CLI’s stdout JSON embedded in the `"result"` field. |
 | **One‑off & recurring prompts** | Schedule prompts at a specific ISO datetime or by cron expression (`"0 9 * * *"` → daily 09:00).                                                                                  |
 | **SQLite persistence**          | All schedules are stored in a lightweight SQLite DB (volume‑mounted for durability).                                                                                              |
 | **Internal scheduler loop**     | A companion process wakes every 60 s and delivers due prompts via the Letta Python SDK. No external cron daemon required.                                                         |
@@ -107,7 +107,24 @@ promptyoself list
 promptyoself cancel --id 7
 ```
 
-Every command prints **JSON** to stdout and exits 0 on success.
+Every command prints **JSON** to stdout and exits 0 on success.
+
+### Agent-side invocation (JSON-RPC)
+
+When a Letta agent calls a tool, Sanctum MCP wraps the CLI flags into a JSON-RPC 2.0 request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "123",
+  "method": "promptyoself.register",
+  "params": {
+    "agent_id": "AGENT_123",
+    "prompt": "Daily stand-up",
+    "cron": "0 9 * * *"
+  }
+}
+```
 
 ---
 

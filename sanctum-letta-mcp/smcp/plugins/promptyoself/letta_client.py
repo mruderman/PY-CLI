@@ -1,55 +1,172 @@
+"""
+Letta client integration for promptyoself plugin.
+Provides helper functions that wrap the official letta-client SDK.
+"""
+
 import os
-import httpx
-from typing import Dict, Any
+import logging
+from typing import Dict, Any, List
 
-# --- Letta Agent Communication ---
+from letta_client import Letta
 
-LETTA_API_KEY = os.environ.get("LETTA_API_KEY")
-LETTA_API_BASE_URL = os.environ.get("LETTA_API_BASE_URL", "https://api.letta.ai/v1")
+logger = logging.getLogger(__name__)
 
-def send_prompt_to_agent(agent_id: str, prompt_text: str) -> Dict[str, Any]:
+_letta_client: Letta | None = None
+
+
+def _get_letta_client() -> Letta:
+    """Return a singleton instance of the Letta SDK client."""
+    global _letta_client
+
+    if _letta_client is None:
+        token = os.getenv("LETTA_API_KEY")
+        base_url = os.getenv("LETTA_BASE_URL")
+
+        if not token:
+            raise RuntimeError("LETTA_API_KEY environment variable not set")
+
+        logger.debug("Initialising Letta client (base_url=%s)", base_url or "cloud default")
+        _letta_client = Letta(token=token, base_url=base_url)
+
+    return _letta_client
+
+
+def send_prompt_to_agent(agent_id: str, prompt_text: str) -> bool:
     """
-    Sends a prompt to a specified Letta agent.
+    Send a prompt message to a Letta agent.
+
+    Args:
+        agent_id: The Letta agent ID.
+        prompt_text: Text content of the prompt.
+
+    Returns:
+        Boolean indicating success or failure.
+    """
+    try:
+        client = _get_letta_client()
+
+        logger.info("Sending prompt to agent %s", agent_id)
+        response = client.agents.messages.create(
+            agent_id=agent_id,
+            messages=[{"role": "user", "content": prompt_text}],
+        )
+        logger.info("Successfully sent prompt to agent %s", agent_id)
+        return True
+    except Exception as e:
+        logger.error("Failed to send prompt to agent %s: %s", agent_id, str(e))
+        return False
+
+
+def test_letta_connection() -> Dict[str, Any]:
+    """
+    Test connection to Letta server.
+    
+    Returns:
+        Status dict with connection test results.
+    """
+    try:
+        client = _get_letta_client()
+        # Try to list agents as a simple connectivity test
+        agents = client.agents.list()
+        return {
+            "status": "success",
+            "message": "Connection to Letta server successful",
+            "agent_count": len(agents)
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to connect to Letta server: {str(e)}"
+        }
+
+
+def list_available_agents() -> Dict[str, Any]:
+    """
+    List all available agents from Letta server.
+    
+    Returns:
+        Dict with agent list or error message.
+    """
+    try:
+        client = _get_letta_client()
+        agents = client.agents.list()
+        
+        agent_list = []
+        for agent in agents:
+            agent_list.append({
+                "id": agent.id,
+                "name": getattr(agent, 'name', 'Unknown'),
+                "created_at": getattr(agent, 'created_at', None),
+                "last_updated": getattr(agent, 'last_updated', None)
+            })
+        
+        return {
+            "status": "success",
+            "agents": agent_list,
+            "count": len(agent_list)
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to list agents: {str(e)}"
+        }
+
+
+def validate_agent_exists(agent_id: str) -> Dict[str, Any]:
+    """
+    Validate that an agent exists on the Letta server.
     
     Args:
-        agent_id: The ID of the target agent.
-        prompt_text: The content of the prompt to send.
+        agent_id: The agent ID to validate.
         
     Returns:
-        The JSON response from the Letta API.
-        
-    Raises:
-        Exception: If the API key is not configured or if the request fails.
+        Dict with validation results.
     """
-    if not LETTA_API_KEY:
-        raise Exception("LETTA_API_KEY environment variable not set.")
-        
-    headers = {
-        "Authorization": f"Bearer {LETTA_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "prompt": prompt_text
-    }
-    
-    url = f"{LETTA_API_BASE_URL}/agents/{agent_id}/prompt"
-    
-    with httpx.Client() as client:
-        response = client.post(url, headers=headers, json=payload)
-        response.raise_for_status()  # Will raise an exception for 4xx/5xx responses
-        return response.json()
-
-if __name__ == '__main__':
-    # Example usage (for testing purposes)
-    agent_id_to_test = os.environ.get("TEST_AGENT_ID", "agent-123")
-    prompt_to_test = "This is a test prompt from the Letta client."
-    
-    print(f"Sending test prompt to agent: {agent_id_to_test}")
-    
     try:
-        api_response = send_prompt_to_agent(agent_id_to_test, prompt_to_test)
-        print("API Response:")
-        print(api_response)
+        client = _get_letta_client()
+        agent = client.agents.get(agent_id)
+        
+        if agent:
+            return {
+                "status": "success",
+                "exists": True,
+                "agent_id": agent_id,
+                "agent_name": getattr(agent, 'name', 'Unknown')
+            }
+        else:
+            return {
+                "status": "error",
+                "exists": False,
+                "message": f"Agent {agent_id} not found"
+            }
     except Exception as e:
-        print(f"An error occurred: {e}")
+        return {
+            "status": "error",
+            "exists": False,
+            "message": f"Failed to validate agent {agent_id}: {str(e)}"
+        }
+
+
+if __name__ == "__main__":
+    # Manual smoke test
+    import json
+    import sys
+
+    test_agent_id = os.getenv("TEST_AGENT_ID")
+    if not test_agent_id:
+        sys.exit("Set TEST_AGENT_ID env var to run this test")
+
+    # Test connection
+    print("Testing connection...")
+    conn_result = test_letta_connection()
+    print(json.dumps(conn_result, indent=2))
+    
+    # Test sending prompt
+    print("\nTesting prompt sending...")
+    success = send_prompt_to_agent(test_agent_id, "Hello from promptyoself!")
+    print(f"Prompt sent successfully: {success}")
+    
+    # Test listing agents
+    print("\nTesting agent listing...")
+    agents_result = list_available_agents()
+    print(json.dumps(agents_result, indent=2))

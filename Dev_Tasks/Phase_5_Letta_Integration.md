@@ -38,7 +38,7 @@ def get_letta_client():
     
     if _letta_client is None:
         try:
-            from letta import create_client
+            from letta_client import Letta
             
             base_url = os.getenv("LETTA_BASE_URL")
             api_key = os.getenv("LETTA_API_KEY")
@@ -49,9 +49,9 @@ def get_letta_client():
             logger.info(f"Connecting to Letta server at {base_url}")
             
             # Create client with authentication
-            _letta_client = create_client(
-                base_url=base_url,
-                token=api_key
+            _letta_client = Letta(
+                token=api_key,
+                base_url=base_url
             )
             
             logger.info("Successfully connected to Letta server")
@@ -80,10 +80,9 @@ def send_prompt_to_agent(agent_id: str, prompt_text: str) -> bool:
         logger.debug(f"Prompt content: {prompt_text}")
         
         # Send message to agent
-        response = client.send_message(
+        response = client.agents.messages.create(
             agent_id=agent_id,
-            message=prompt_text,
-            role="user"
+            messages=[{"role": "user", "content": prompt_text}]
         )
         
         if response:
@@ -104,7 +103,7 @@ def test_letta_connection() -> Dict[str, Any]:
         client = get_letta_client()
         
         # Try to list agents to test connection
-        agents = client.list_agents()
+        agents = client.agents.all()
         
         return {
             "success": True,
@@ -124,7 +123,7 @@ def list_available_agents() -> List[Dict[str, Any]]:
     """List all available agents."""
     try:
         client = get_letta_client()
-        agents = client.list_agents()
+        agents = client.agents.all()
         
         return [
             {
@@ -144,7 +143,7 @@ def validate_agent_exists(agent_id: str) -> bool:
     """Check if an agent exists."""
     try:
         client = get_letta_client()
-        agent = client.get_agent(agent_id)
+        agent = client.agents.retrieve(agent_id)
         return agent is not None
         
     except Exception as e:

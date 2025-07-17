@@ -73,7 +73,7 @@
   * `execute` — Trigger due prompts; send them to agents and update schedules.
 
 * **Output Format:**
-  All CLI commands must output JSON to stdout per Sanctum MCP expectations. Examples:
+  All CLI commands must output JSON to stdout. Sanctum MCP then embeds this payload inside the `result` field of a **JSON-RPC 2.0** response when returning the tool call to Letta agents. Examples:
 
   ```json
   // register success

@@ -1,0 +1,53 @@
+[Unit]
+Description=Promptyoself MCP Server
+Documentation=https://github.com/your-org/promptyoself
+After=network.target network-online.target
+Wants=network-online.target
+Requires=network.target
+
+[Service]
+Type=simple
+User=promptyoself
+Group=promptyoself
+WorkingDirectory=/opt/promptyoself
+ExecStart=/opt/promptyoself/venv/bin/python smcp/mcp_server.py --host 0.0.0.0 --port 8000
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=10
+
+# Environment variables
+Environment=PYTHONPATH=/opt/promptyoself
+Environment=MCP_PORT=8000
+Environment=MCP_PLUGINS_DIR=/opt/promptyoself/smcp/plugins
+Environment=PROMPTYOSELF_DB=/opt/promptyoself/data/promptyoself.db
+Environment=PROMPTYOSELF_LOG_DIR=/var/log/promptyoself
+Environment=LETTA_BASE_URL=https://cyansociety.a.pinggy.link/
+EnvironmentFile=-/etc/default/promptyoself
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/promptyoself/data /var/log/promptyoself
+ProtectHome=yes
+RemoveIPC=yes
+RestrictSUIDSGID=yes
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+MemoryAccounting=yes
+MemoryMax=1G
+CPUAccounting=yes
+CPUQuota=200%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=promptyoself-mcp
+
+[Install]
+WantedBy=multi-user.target

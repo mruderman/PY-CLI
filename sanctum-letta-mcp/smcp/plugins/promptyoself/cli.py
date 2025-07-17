@@ -11,14 +11,15 @@ import json
 import sys
 import logging
 from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil import parser as date_parser
 
 logging.basicConfig(level=logging.DEBUG, stream=sys.stderr, format='%(asctime)s - %(levelname)s - %(message)s')
 from croniter import croniter
 
 from smcp.plugins.promptyoself.db import add_schedule, list_schedules, cancel_schedule
-from smcp.plugins.promptyoself.scheduler import calculate_next_run, execute_due_prompts
+from smcp.plugins.promptyoself.scheduler import calculate_next_run, execute_due_prompts, run_scheduler_loop
+from smcp.plugins.promptyoself.letta_client import test_letta_connection, list_available_agents, validate_agent_exists
 
 
 def register_prompt(args: Dict[str, Any]) -> Dict[str, Any]:
@@ -27,15 +28,26 @@ def register_prompt(args: Dict[str, Any]) -> Dict[str, Any]:
     prompt = args.get("prompt")
     time_str = args.get("time")
     cron_expr = args.get("cron")
+    every_str = args.get("every")
+    skip_validation = args.get("skip_validation", False)
+    max_repetitions = args.get("max_repetitions") or args.get("max-repetitions")
+    start_at = args.get("start_at") or args.get("start-at")
     
     if not agent_id or not prompt:
         return {"error": "Missing required arguments: agent-id and prompt"}
     
-    if not time_str and not cron_expr:
-        return {"error": "Must specify either --time or --cron"}
+    # Count how many scheduling options are provided
+    schedule_options = sum(bool(x) for x in [time_str, cron_expr, every_str])
+    if schedule_options == 0:
+        return {"error": "Must specify one of --time, --cron, or --every"}
+    if schedule_options > 1:
+        return {"error": "Cannot specify multiple scheduling options"}
     
-    if time_str and cron_expr:
-        return {"error": "Cannot specify both --time and --cron"}
+    # Validate agent exists unless skipped
+    if not skip_validation:
+        validation_result = validate_agent_exists(agent_id)
+        if validation_result["status"] == "error":
+            return {"error": f"Agent validation failed: {validation_result['message']}"}
     
     try:
         if time_str:
@@ -47,7 +59,7 @@ def register_prompt(args: Dict[str, Any]) -> Dict[str, Any]:
             schedule_type = "once"
             schedule_value = time_str
             
-        else:
+        elif cron_expr:
             # Recurring schedule
             if not croniter.is_valid(cron_expr):
                 return {"error": f"Invalid cron expression: {cron_expr}"}
@@ -55,13 +67,49 @@ def register_prompt(args: Dict[str, Any]) -> Dict[str, Any]:
             schedule_type = "cron"
             schedule_value = cron_expr
             next_run = calculate_next_run(cron_expr)
+            
+        elif every_str:
+            # Interval schedule
+            schedule_type = "interval"
+            schedule_value = every_str
+            
+            # Parse interval and calculate next run
+            try:
+                if every_str.endswith('s'):
+                    seconds = int(every_str[:-1])
+                elif every_str.endswith('m'):
+                    seconds = int(every_str[:-1]) * 60
+                elif every_str.endswith('h'):
+                    seconds = int(every_str[:-1]) * 3600
+                else:
+                    seconds = int(every_str)  # Default to seconds
+                
+                # Handle start_at parameter for interval schedules
+                if start_at:
+                    next_run = date_parser.parse(start_at)
+                    if next_run <= datetime.utcnow():
+                        return {"error": "Start time must be in the future"}
+                else:
+                    next_run = datetime.utcnow() + timedelta(seconds=seconds)
+            except ValueError:
+                return {"error": f"Invalid interval format: {every_str}. Use formats like '30s', '5m', '1h'"}
+        
+        # Validate max_repetitions if provided
+        if max_repetitions is not None:
+            try:
+                max_repetitions = int(max_repetitions)
+                if max_repetitions <= 0:
+                    return {"error": "max-repetitions must be a positive integer"}
+            except ValueError:
+                return {"error": "max-repetitions must be a valid integer"}
         
         schedule_id = add_schedule(
             agent_id=agent_id,
             prompt_text=prompt,
             schedule_type=schedule_type,
             schedule_value=schedule_value,
-            next_run=next_run
+            next_run=next_run,
+            max_repetitions=max_repetitions
         )
         
         return {
@@ -126,14 +174,42 @@ def cancel_prompt(args: Dict[str, Any]) -> Dict[str, Any]:
         return {"error": f"Failed to cancel prompt: {str(e)}"}
 
 
+def test_connection(args: Dict[str, Any]) -> Dict[str, Any]:
+    """Test connection to Letta server."""
+    try:
+        result = test_letta_connection()
+        return result
+    except Exception as e:
+        return {"error": f"Failed to test connection: {str(e)}"}
+
+
+def list_agents(args: Dict[str, Any]) -> Dict[str, Any]:
+    """List available agents from Letta server."""
+    try:
+        result = list_available_agents()
+        return result
+    except Exception as e:
+        return {"error": f"Failed to list agents: {str(e)}"}
+
+
 def execute_prompts(args: Dict[str, Any]) -> Dict[str, Any]:
     """Execute due prompts."""
     loop_mode = args.get("loop", False)
+    interval = args.get("interval", 60)
     
     try:
         if loop_mode:
-            # This will be implemented in Phase 4
-            return {"error": "Loop mode not yet implemented"}
+            # Run in loop mode using scheduler
+            try:
+                interval_seconds = int(interval)
+            except ValueError:
+                return {"error": "Interval must be a number (seconds)"}
+            
+            run_scheduler_loop(interval_seconds)
+            return {
+                "status": "success",
+                "message": "Scheduler loop completed"
+            }
         else:
             results = execute_due_prompts()
             return {
@@ -157,13 +233,20 @@ Available commands:
   list        List scheduled prompts
   cancel      Cancel a scheduled prompt
   execute     Execute due prompts
+  test        Test connection to Letta server
+  agents      List available agents
 
 Examples:
   python cli.py register --agent-id agent-123 --prompt "Check status" --time "2024-01-01 14:30:00"
   python cli.py register --agent-id agent-123 --prompt "Daily report" --cron "0 9 * * *"
+  python cli.py register --agent-id agent-123 --prompt "Every 5 minutes" --every "5m"
+  python cli.py register --agent-id agent-123 --prompt "Focus check" --every "6m" --max-repetitions 10 --start-at "2024-01-01 15:00:00"
   python cli.py list --agent-id agent-123
   python cli.py cancel --id 5
   python cli.py execute
+  python cli.py execute --loop --interval 30
+  python cli.py test
+  python cli.py agents
         """
     )
     
@@ -175,6 +258,10 @@ Examples:
     register_parser.add_argument("--prompt", required=True, help="Prompt content to schedule")
     register_parser.add_argument("--time", help="One-time execution time (ISO format)")
     register_parser.add_argument("--cron", help="Cron expression for recurring execution")
+    register_parser.add_argument("--every", help="Interval for recurring execution (e.g., '5m', '1h', '30s')")
+    register_parser.add_argument("--max-repetitions", type=int, help="Maximum number of repetitions (for --every schedules)")
+    register_parser.add_argument("--start-at", help="Start time for interval schedules (ISO format)")
+    register_parser.add_argument("--skip-validation", action="store_true", help="Skip agent validation")
     
     # List command
     list_parser = subparsers.add_parser("list", help="List scheduled prompts")
@@ -188,6 +275,13 @@ Examples:
     # Execute command
     execute_parser = subparsers.add_parser("execute", help="Execute due prompts")
     execute_parser.add_argument("--loop", action="store_true", help="Run continuously")
+    execute_parser.add_argument("--interval", type=int, default=60, help="Interval in seconds for loop mode (default: 60)")
+    
+    # Test command
+    test_parser = subparsers.add_parser("test", help="Test connection to Letta server")
+    
+    # Agents command
+    agents_parser = subparsers.add_parser("agents", help="List available agents")
     
     args = parser.parse_args()
     logging.debug(f"Parsed args: {args}")
@@ -206,6 +300,10 @@ Examples:
         result = cancel_prompt(args_dict)
     elif command == "execute":
         result = execute_prompts(args_dict)
+    elif command == "test":
+        result = test_connection(args_dict)
+    elif command == "agents":
+        result = list_agents(args_dict)
     else:
         result = {"error": f"Unknown command: {command}"}
     

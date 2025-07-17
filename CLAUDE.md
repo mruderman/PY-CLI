@@ -11,6 +11,81 @@ This is the Promptyoself-Command-Line-Edition project - a self-hosted prompt sch
 - Url for self-hosted remote letta server is https://cyansociety.a.pinggy.link/
 - Letta password for self-hosted Letta ADE server is TWIJftq/ufbbxo8w51m/BQ1wBNrZb/JT
 
+## Python Path Navigation & Module Location
+
+### Understanding Python Path Issues
+When working with CLI scripts in this project, the Python interpreter needs to locate modules correctly. The project structure uses relative imports from the `smcp/` package, which can cause `ModuleNotFoundError` if not handled properly.
+
+### Method 1: PYTHONPATH Environment Variable (Recommended)
+Use the PYTHONPATH to explicitly define module search paths:
+
+```bash
+# Navigate to project root
+cd /path/to/project
+
+# Execute CLI with PYTHONPATH
+PYTHONPATH=/absolute/path/to/sanctum-letta-mcp python smcp/plugins/promptyoself/cli.py execute
+
+# Example with relative path
+PYTHONPATH=./sanctum-letta-mcp python sanctum-letta-mcp/smcp/plugins/promptyoself/cli.py execute
+```
+
+### Method 2: Direct Directory Navigation
+Navigate to the plugin directory and use relative imports:
+
+```bash
+# Navigate to plugin directory
+cd sanctum-letta-mcp/smcp/plugins/promptyoself
+
+# Execute with relative path from project root
+PYTHONPATH=../../../ python cli.py execute
+```
+
+### Method 3: Python -m Module Execution
+Use Python's module execution with proper package structure:
+
+```bash
+# From project root
+python -m smcp.plugins.promptyoself.cli execute
+```
+
+### Method 4: Virtual Environment with PYTHONPATH
+Combine virtual environment with explicit path setting:
+
+```bash
+# Activate virtual environment
+source ./venv/bin/activate
+
+# Execute with PYTHONPATH
+PYTHONPATH=/absolute/path/to/sanctum-letta-mcp python smcp/plugins/promptyoself/cli.py execute
+```
+
+### Common Python Path Patterns
+- **Absolute paths**: Use full system paths for reliability
+- **Relative paths**: Use `./` for current directory navigation
+- **Parent directory**: Use `../` to navigate up directory levels
+- **Virtual environments**: Ensure venv is activated before path resolution
+
+### Module Location Troubleshooting
+When encountering `ModuleNotFoundError`:
+1. Verify the module exists in the expected location
+2. Check PYTHONPATH includes the project root
+3. Ensure virtual environment is activated
+4. Use `python -c "import sys; print(sys.path)"` to debug path issues
+5. Test with absolute paths first, then optimize to relative
+
+### CLI Execution Best Practices
+```bash
+# Always use PYTHONPATH for CLI scripts
+PYTHONPATH=/path/to/project python script.py
+
+# For plugin testing
+PYTHONPATH=/path/to/project python smcp/plugins/promptyoself/cli.py [command]
+
+# For one-off commands
+PYTHONPATH=/path/to/project python -m smcp.plugins.promptyoself.cli [command]
+```
+
 ## Essential Commands
 
 ### Testing
@@ -35,8 +110,7 @@ python run_tests.py --no-cov
 ```bash
 # Start the MCP server (main entry point)
 cd sanctum-letta-mcp
-source venv/bin/activate
-python smcp/mcp_server.py
+./venv/bin/python smcp/mcp_server.py
 
 # Or use the startup script
 ./start.sh
@@ -59,6 +133,15 @@ python cli.py --help
 python cli.py deploy --app-name "myapp" --environment "staging"
 ```
 
+### Plugin Testing with PYTHONPATH
+```bash
+# Test promptyoself plugin with correct path handling
+cd /path/to/project
+PYTHONPATH=/absolute/path/to/sanctum-letta-mcp python sanctum-letta-mcp/smcp/plugins/promptyoself/cli.py --help
+PYTHONPATH=/absolute/path/to/sanctum-letta-mcp python sanctum-letta-mcp/smcp/plugins/promptyoself/cli.py execute
+PYTHONPATH=/absolute/path/to/sanctum-letta-mcp python sanctum-letta-mcp/smcp/plugins/promptyoself/cli.py list
+```
+
 ## Architecture Overview
 
 ### High-Level Structure
@@ -67,17 +150,17 @@ python cli.py deploy --app-name "myapp" --environment "staging"
 │  Sanctum MCP       │──────────▶│  promptyoself CLI        │
 │  (stdio server)    │           │  (argparse sub‑commands) │
 └────────────────────┘           └──────────┬───────────────┘
-                                           │DB (SQLite)
-                                           ▼
-                                 ┌────────────────────┐
-                                 │ Scheduler Loop     │
-                                 │ (exec every 60 s)  │
-                                 └──────────┬─────────┘
-                                            │HTTP (Letta SDK)
+                                            │DB (SQLite)
                                             ▼
-                                     ┌──────────────┐
-                                     │ Letta Server │
-                                     └──────────────┘
+                                  ┌────────────────────┐
+                                  │ Scheduler Loop     │
+                                  │ (exec every 60 s)  │
+                                  └──────────┬─────────┘
+                                             │HTTP (Letta SDK)
+                                             ▼
+                                      ┌──────────────┐
+                                      │ Letta Server │
+                                      └──────────────┘
 ```
 
 ### Key Components
@@ -92,7 +175,7 @@ python cli.py deploy --app-name "myapp" --environment "staging"
 - Each plugin is a directory with `cli.py`
 - Uses argparse with subcommands for tool discovery
 - JSON output for MCP tool integration
-- Current plugins: `botfather` (Telegram automation), `devops` (deployment operations)
+- Current plugins: `botfather` (Telegram automation), `devops` (deployment operations), `promptyoself` (prompt scheduling)
 
 **Plugin Auto-Discovery** (`smcp/mcp_server.py:36-81`)
 - Scans plugins directory for `cli.py` files
@@ -139,7 +222,35 @@ python cli.py deploy --app-name "myapp" --environment "staging"
 - Server uses FastMCP with SSE transport for real-time communication
 - All plugin executions are async subprocess calls with timeout handling
 
-## Development Workflow
+## Python Path Navigation Best Practices
+
+### When Working with CLI Scripts
+Always use PYTHONPATH to ensure correct module resolution:
+```bash
+# Absolute path approach (most reliable)
+PYTHONPATH=/absolute/path/to/sanctum-letta-mcp python smcp/plugins/promptyoself/cli.py [command]
+
+# Relative path approach
+PYTHONPATH=./sanctum-letta-mcp python sanctum-letta-mcp/smcp/plugins/promptyoself/cli.py [command]
+
+# Virtual environment approach
+source ./venv/bin/activate
+PYTHONPATH=/absolute/path/to/sanctum-letta-mcp python smcp/plugins/promptyoself/cli.py [command]
+```
+
+### Debug Module Location Issues
+```bash
+# Check current Python path
+python -c "import sys; print('\n'.join(sys.path))"
+
+# Test module import
+python -c "import smcp.plugins.promptyoself.cli; print('Module found')"
+
+# Verify relative imports work
+python -c "from smcp.plugins.promptyoself import cli; print('Relative import successful')"
+```
+
+### Development Workflow
 
 ### Implementation Planning
 - Detailed implementation phases are stored in `Dev_Tasks/` directory
@@ -158,21 +269,21 @@ python cli.py deploy --app-name "myapp" --environment "staging"
 ```bash
 # Test Letta connection
 cd sanctum-letta-mcp
-python smcp/plugins/promptyoself/cli.py test
+./venv/bin/python smcp/plugins/promptyoself/cli.py test
 
 # List available agents
-python smcp/plugins/promptyoself/cli.py agents
+./venv/bin/python smcp/plugins/promptyoself/cli.py agents
 
 # Register prompts
-python smcp/plugins/promptyoself/cli.py register --agent-id "agent-123" --prompt "Daily check" --cron "0 9 * * *"
-python smcp/plugins/promptyoself/cli.py register --agent-id "agent-456" --prompt "Every 5 minutes" --every "5m"
+./venv/bin/python smcp/plugins/promptyoself/cli.py register --agent-id "agent-123" --prompt "Daily check" --cron "0 9 * * *"
+./venv/bin/python smcp/plugins/promptyoself/cli.py register --agent-id "agent-456" --prompt "Every 5 minutes" --every "5m"
 
 # List scheduled prompts
-python smcp/plugins/promptyoself/cli.py list
-python smcp/plugins/promptyoself/cli.py list --agent-id "agent-123"
+./venv/bin/python smcp/plugins/promptyoself/cli.py list
+./venv/bin/python smcp/plugins/promptyoself/cli.py list --agent-id "agent-123"
 
 # Execute due prompts
-python smcp/plugins/promptyoself/cli.py execute
+./venv/bin/python smcp/plugins/promptyoself/cli.py execute
 
 # Start scheduler daemon
 ./start_promptyoself.sh start
@@ -193,4 +304,3 @@ python monitor_promptyoself.py
 
 # Log cleanup
 ./maintenance/cleanup_logs.sh
-```

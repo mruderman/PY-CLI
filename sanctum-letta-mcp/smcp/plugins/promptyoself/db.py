@@ -17,12 +17,15 @@ class PromptSchedule(Base):
     id = Column(Integer, primary_key=True)
     agent_id = Column(String, nullable=False, index=True)
     prompt_text = Column(Text, nullable=False)
-    schedule_type = Column(String, nullable=False)  # 'once' or 'cron'
+    schedule_type = Column(String, nullable=False)  # 'once', 'cron', or 'interval'
     schedule_value = Column(String, nullable=False)
     next_run = Column(DateTime, nullable=False, index=True)
     active = Column(Boolean, default=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_run = Column(DateTime, nullable=True)
+    # New fields for finite frequency prompts
+    max_repetitions = Column(Integer, nullable=True)  # Maximum number of times to repeat (None = infinite)
+    repetition_count = Column(Integer, default=0)  # Current number of repetitions
 
 def initialize_db():
     """Create all tables in the database."""
@@ -34,7 +37,7 @@ def get_session() -> Session:
 
 # --- CRUD Operations ---
 
-def add_schedule(agent_id: str, prompt_text: str, schedule_type: str, schedule_value: str, next_run: datetime) -> int:
+def add_schedule(agent_id: str, prompt_text: str, schedule_type: str, schedule_value: str, next_run: datetime, max_repetitions: int = None) -> int:
     """Add a new schedule to the database."""
     session = get_session()
     try:
@@ -43,7 +46,9 @@ def add_schedule(agent_id: str, prompt_text: str, schedule_type: str, schedule_v
             prompt_text=prompt_text,
             schedule_type=schedule_type,
             schedule_value=schedule_value,
-            next_run=next_run
+            next_run=next_run,
+            max_repetitions=max_repetitions,
+            repetition_count=0
         )
         session.add(new_schedule)
         session.commit()
@@ -74,6 +79,8 @@ def list_schedules(agent_id: Optional[str] = None, active_only: bool = True) -> 
                 "active": s.active,
                 "created_at": s.created_at.isoformat(),
                 "last_run": s.last_run.isoformat() if s.last_run else None,
+                "max_repetitions": s.max_repetitions,
+                "repetition_count": s.repetition_count,
             }
             for s in schedules
         ]
